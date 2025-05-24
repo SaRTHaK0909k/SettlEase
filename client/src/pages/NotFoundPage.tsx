@@ -7,34 +7,48 @@ const NotFoundPage = () => {
   const styles = {
     container: {
       display: "flex",
-      flexDirection: "column" as "column",
+      flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
       height: "100vh",
-      backgroundColor: "#f5f5f5",
-      padding: "20px",
-      boxSizing: "border-box" as "border-box",
+      backgroundColor: "#f8f9fa",
+      padding: 24,
+      textAlign: "center" as const,
+    },
+    heading: {
+      fontSize: "3rem",
+      color: "#343a40",
+      marginBottom: 16,
+    },
+    message: {
+      fontSize: "1.2rem",
+      color: "#6c757d",
+      maxWidth: 500,
+      marginBottom: 24,
     },
     button: {
-      marginTop: "20px",
-      padding: "10px 20px",
-      borderRadius: "5px",
+      padding: "12px 24px",
+      borderRadius: 6,
       border: "none",
-      backgroundColor: "#007BFF",
-      color: "white",
+      backgroundColor: "#007bff",
+      color: "#fff",
       cursor: "pointer",
+      fontSize: "1rem",
     },
   };
 
   return (
     <div style={styles.container}>
-      <h1>404: Page Not Found</h1>
-      <p>The page you are looking for does not exist.</p>
+      <h1 style={styles.heading}>404 - Page Not Found</h1>
+      <p style={styles.message}>
+        Sorry, the page you're looking for doesn't exist or has been moved.
+      </p>
       <button
         style={styles.button}
         onClick={() => navigate("/", { replace: true })}
+        aria-label="Go back to the homepage"
       >
-        Go back to the landing page
+        Go Back Home
       </button>
     </div>
   );
