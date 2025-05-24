@@ -5,35 +5,26 @@ import { TransportationModel } from "../models/TransporationModel";
 import User from "../models/UserModel";
 import { getAge } from "../utils/RandomUtils";
 
+// Constants
+const DEFAULT_TRANSPORTATION_MESSAGE = "No transportation preferences selected.";
+const API_ENDPOINT = "http://localhost:5000/generate-content";
+
 export const getTransportationString = (
   transportationData: TransportationModel[]
-) => {
-  if (transportationData.length === 0) {
-    return "No transportation preferences selected.";
-  }
-  // Filter selected transportations and sort them by radius
-  const selectedAndSortedTransportations = transportationData
-    .filter((transportation) => transportation.selected)
+): string => {
+  const selected = transportationData
+    .filter((t) => t.selected)
     .sort((a, b) => a.radius - b.radius);
 
-  // Map transportations to strings
-  const transportationStrings = selectedAndSortedTransportations.map(
-    (transportation) =>
-      `${transportation.method} (${transportation.radius} miles)`
+  if (selected.length === 0) return DEFAULT_TRANSPORTATION_MESSAGE;
+
+  const formatted = selected.map(
+    (t) => `${t.method} (${t.radius} miles)`
   );
 
-  // Format the final string
-  let finalString;
-  if (transportationStrings.length > 1) {
-    const lastTransportation = transportationStrings.pop();
-    finalString = `${transportationStrings.join(
-      ", "
-    )}, and ${lastTransportation}`;
-  } else {
-    finalString = transportationStrings[0];
-  }
-
-  return finalString;
+  return formatted.length > 1
+    ? `${formatted.slice(0, -1).join(", ")}, and ${formatted.at(-1)}`
+    : formatted[0];
 };
 
 export const getUserProfileData = (
@@ -43,19 +34,17 @@ export const getUserProfileData = (
   lifestylePreferences: string,
   additionalInfo: string,
   socialPreferences: SocialPreferenceModel[]
-) => {
-  const age = user && user.birthday ? getAge(user.birthday) : "";
-  const gender = user?.gender || "";
-  const city = addressParts ? addressParts[1] : "";
-  const address = addressParts ? addressParts[0] : "";
-  const transportation = getTransportationString(
-    transportationPreferences || []
-  );
+): string => {
+  const age = user?.birthday ? getAge(user.birthday) : "";
+  const gender = user?.gender ?? "";
+  const city = addressParts?.[1] ?? "";
+  const address = addressParts?.[0] ?? "";
+  const transportation = getTransportationString(transportationPreferences);
   const routines = lifestylePreferences || "";
   const additional = additionalInfo || "";
   const priorities = socialPreferences
-    .filter((preference) => preference.selected)
-    .map((preference) => preference.name)
+    .filter((pref) => pref.selected)
+    .map((pref) => pref.name)
     .join(", ");
 
   return `I am a ${age} year old ${gender}, and I am moving to ${city}. My address is ${address}, and I prefer to travel by ${transportation}. I have the following routines and preferences in my locations: ${routines}. Additional information: ${additional}. When deciding on the places I go frequently, I care about the following priorities: ${priorities}.`;
@@ -63,40 +52,34 @@ export const getUserProfileData = (
 
 export const getCategoryPrompt = (
   category: CategoryModel,
-  categoryTitle?: string
-) => {
-  if (!categoryTitle) {
-    categoryTitle = category.title;
-  }
-
-  const costPreference = category.costPreference
+  categoryTitle: string = category.title
+): string => {
+  const cost = category.costPreference
     ? `in the ${category.costPreference} price range`
     : "";
-  const environmentDescriptors =
-    category.environmentDescriptors.length > 0
+  const vibe =
+    category.environmentDescriptors?.length > 0
       ? `with a vibe of ${category.environmentDescriptors.join(", ")}`
       : "";
-  const userPreferences = category.userPreferences
+  const userPrefs = category.userPreferences
     ? `keeping in mind your preference for ${category.userPreferences}`
     : "";
 
-  return `We will specifically look for ${categoryTitle} ${costPreference} ${environmentDescriptors}. ${userPreferences}`;
+  return `We will specifically look for ${categoryTitle} ${cost} ${vibe}. ${userPrefs}`;
 };
 
-export function exploreInstruction() {
-  return `
-  Generate and output an array of at least three JSON objects that follow this JSON structure with results of your search based on analysis using Google Maps and Google Places API. The output should strictly adhere to this JSON format without additional commentary:  
-    {
-      "title": "string", // A concise title summarizing the recommendation.
-      "place": "string", // The name of the recommended location.
-      "address": "string", // The full address of the recommended location. Be precise
-      "personalizedSummary": "string", // A brief description of the recommendation tailored to the user's specific preferences.
-      "reccomendationReasoning": "string", // User friendly explaination of the rationale behind the recommendation, highlighting factors like user preferences and data analysis.
-      "confidence": "number", // A numerical value (0-1) indicating the confidence level in this recommendation.
-      "category": "string" // Categorizes the recommendation, such as "Restaurant", "Park", "Event", etc. This can be found in the prompt.
-    }
-  `;
+export const exploreInstruction = (): string => `
+Generate and output an array of at least three JSON objects that follow this JSON structure with results of your search based on analysis using Google Maps and Google Places API. The output should strictly adhere to this JSON format without additional commentary:  
+{
+  "title": "string",
+  "place": "string",
+  "address": "string",
+  "personalizedSummary": "string",
+  "recommendationReasoning": "string",
+  "confidence": "number",
+  "category": "string"
 }
+`;
 
 export const generateAPIRequest = async (
   user: User,
@@ -108,45 +91,43 @@ export const generateAPIRequest = async (
   category: CategoryModel,
   categoryTitle: string
 ): Promise<ExploreCardModel[]> => {
-  const userProfileString = getUserProfileData(
+  const systemInstruction = getUserProfileData(
     user,
     addressParts,
     transportationPreferences,
     lifestylePreferences,
     additionalInfo,
     socialPreferences
-  );
+  ) + exploreInstruction();
 
-  const categoryPrompt = getCategoryPrompt(category, categoryTitle);
+  const searchPrompt = getCategoryPrompt(category, categoryTitle);
 
-  return fetch("http://localhost:5000/generate-content", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      system_instruction: userProfileString + exploreInstruction(),
-      search_prompt: categoryPrompt,
-    }),
-  })
-    .then((response) => {
-      return response.json();
-    })
-    .then((data) => {
-      console.log("Data:", data);
-      return data.map((result: any) => {
-        return {
-          title: result.title,
-          place: result.place,
-          address: result.address,
-          personalizedSummary: result.personalizedSummary,
-          reccomendationReasoning: result.reccomendationReasoning,
-          confidence: result.confidence,
-          category: category.title,
-        } as ExploreCardModel;
-      });
-    })
-    .catch((error) => {
-      console.error("Error:", error);
+  try {
+    const response = await fetch(API_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ system_instruction: systemInstruction, search_prompt: searchPrompt }),
     });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    return data.map((result: any): ExploreCardModel => ({
+      title: result.title,
+      place: result.place,
+      address: result.address,
+      personalizedSummary: result.personalizedSummary,
+      reccomendationReasoning: result.recommendationReasoning, 
+      confidence: result.confidence,
+      category: category.title,
+    }));
+  } catch (error) {
+    console.error("Failed to fetch recommendations:", error);
+    return [];
+  }
 };
+
+
