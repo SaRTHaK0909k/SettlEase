@@ -1,17 +1,17 @@
-import {
+import React, {
   createContext,
   useContext,
-  ReactNode,
   useEffect,
   useState,
+  ReactNode,
 } from "react";
-import React from "react";
 import {
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
   signInWithRedirect,
   getRedirectResult,
+  User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "../firebase.config";
 import User from "../models/UserModel";
@@ -23,7 +23,7 @@ type AuthContextType = {
   logOut: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 interface AuthContextProviderProps {
   children: ReactNode;
@@ -31,59 +31,51 @@ interface AuthContextProviderProps {
 
 export const AuthContextProvider = ({ children }: AuthContextProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        await storeGoogleToken();
-        const { displayName, email, uid, photoURL, metadata } = user;
-
-        setUser({
-          id: uid,
-          name: displayName || "",
-          email: email || "",
-          photoURL: photoURL || "",
-          createdAt: new Date(metadata.creationTime || ""),
-          lastLogin: new Date(metadata.lastSignInTime || ""),
-          homeAddress: "",
-          workAddress: "",
-          birthday: null,
-          gender: "",
-        });
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        await handleRedirectResult(); // safe to call every time
+        setUser(mapFirebaseUserToCustomUser(firebaseUser));
       } else {
         setUser(null);
       }
+      setLoading(false);
     });
 
-    return () => {
-      unsubscribe();
-    };
+    return unsubscribe;
   }, []);
 
-  const storeGoogleToken = async () => {
-    console.log("Storing Google token");
+  const handleRedirectResult = async () => {
     try {
       const result = await getRedirectResult(auth);
-      if (result) {
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        if (credential) {
-          const token = credential.accessToken;
-          if (!token) {
-            console.log("No token from credential. Credential: ", credential);
-          } else {
-            localStorage.setItem("accessToken", token);
-            console.log("Token stored successfull!");
-          }
-        } else {
-          console.log("No credential from result. Result: ", result);
-        }
-      } else {
-        console.log("No result from redirect. Auth: ", auth);
+      const credential = result && GoogleAuthProvider.credentialFromResult(result);
+      const token = credential?.accessToken;
+
+      if (token) {
+        localStorage.setItem("accessToken", token);
+        console.log("Google access token stored.");
       }
     } catch (error) {
-      console.error("Error getting redirect result: ", error);
+      console.error("Error getting redirect result:", error);
     }
+  };
+
+  const mapFirebaseUserToCustomUser = (firebaseUser: FirebaseUser): User => {
+    const { uid, displayName, email, photoURL, metadata } = firebaseUser;
+    return {
+      id: uid,
+      name: displayName || "",
+      email: email || "",
+      photoURL: photoURL || "",
+      createdAt: new Date(metadata.creationTime || Date.now()),
+      lastLogin: new Date(metadata.lastSignInTime || Date.now()),
+      homeAddress: "",
+      workAddress: "",
+      birthday: null,
+      gender: "",
+    };
   };
 
   const googleSignIn = async () => {
@@ -94,21 +86,23 @@ export const AuthContextProvider = ({ children }: AuthContextProviderProps) => {
 
     setLoading(true);
     try {
-      console.log("Signing in with Google");
-      await signInWithRedirect(auth, provider).then(async () => {
-        console.log("Signed in with Google");
-        await storeGoogleToken();
-      });
+      await signInWithRedirect(auth, provider);
+      // `getRedirectResult` will be handled in useEffect
     } catch (error) {
-      console.error("Error signing in with Google: ", error);
+      console.error("Google Sign-In failed:", error);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const logOut = async () => {
     setLoading(true);
-    localStorage.removeItem("accessToken");
-    await signOut(auth);
+    try {
+      await signOut(auth);
+      localStorage.removeItem("accessToken");
+      setUser(null);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
     setLoading(false);
   };
 
@@ -119,6 +113,10 @@ export const AuthContextProvider = ({ children }: AuthContextProviderProps) => {
   );
 };
 
-export const UserAuth = () => {
-  return useContext(AuthContext);
+export const useUserAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useUserAuth must be used within AuthContextProvider");
+  }
+  return context;
 };
