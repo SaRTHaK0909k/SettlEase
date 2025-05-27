@@ -30,7 +30,7 @@ def generate_content(system_instruction, search_prompt):
   ]
 
   model = genai.GenerativeModel(
-    "models/gemini-1.5-pro-latest",
+    "models/gemini-1.5-pro",
     system_instruction=system_instruction,
     generation_config=GENERATION_CONFIG,
     safety_settings=SAFETY_SETTINGS,
@@ -47,12 +47,6 @@ def generate_content(system_instruction, search_prompt):
     except DeadlineExceeded:
       print("Deadline exceeded. Retrying in 1 second...")
       time.sleep(1)
-    except json.JSONDecodeError:
-      print("JSON decode error. Retrying in 1 second...")
-      time.sleep(1)
-    except ResourceExhausted:
-      print("Resource exhausted. Retrying in 10 second...")
-      time.sleep(10)
     except ValueError:
       print("A value error occurred. Retrying in 1 second...")
       # If the response doesn't contain text, check if the prompt was blocked.
